@@ -22,9 +22,20 @@ enum class LedState {
     SPOTIFY_CONNECTING, // Blue pulsing - connecting to Spotify
     SPOTIFY_ERROR,      // Orange blinking - Spotify auth/device error
     NFC_READING,        // Blue spinning - reading NFC tag
+    TAG_PROCESSING,     // Blue-purple alternating spin - processing/sending to Spotify
     TAG_SUCCESS,        // Green flash then idle - tag played successfully
     TAG_FAILURE,        // Red flash then idle - tag failed to play
-    DEVICE_SELECTED     // Cyan flash - device selected from web UI
+    DEVICE_SELECTED,    // Cyan flash - device selected from web UI
+    MUSIC_PLAYING,      // Rainbow wave - music is playing
+    MUSIC_PAUSED,       // Dim blue breathing - playback paused
+    STANDBY,            // Very dim white breathing - low power standby
+    STARTUP,            // Rainbow sweep - device booting
+    TOKEN_REFRESH,      // Purple pulse - refreshing Spotify token
+    SEARCHING,          // White sparkle - searching for devices
+    VOLUME_UP,          // Green expanding ring - volume increased
+    VOLUME_DOWN,        // Green contracting ring - volume decreased
+    SKIP_TRACK,         // Cyan chase right - skipping to next
+    PREV_TRACK          // Cyan chase left - going to previous
 };
 
 /**
@@ -57,6 +68,11 @@ namespace StatusColor
     constexpr uint8_t NFC_READING_G = 0;
     constexpr uint8_t NFC_READING_B = 255;
 
+    // Tag processing - purple/violet (mix of blue and magenta)
+    constexpr uint8_t TAG_PROCESSING_R = 138;
+    constexpr uint8_t TAG_PROCESSING_G = 43;
+    constexpr uint8_t TAG_PROCESSING_B = 226;
+
     // Success - green
     constexpr uint8_t SUCCESS_R = 0;
     constexpr uint8_t SUCCESS_G = 255;
@@ -71,6 +87,36 @@ namespace StatusColor
     constexpr uint8_t DEVICE_SELECTED_R = 0;
     constexpr uint8_t DEVICE_SELECTED_G = 255;
     constexpr uint8_t DEVICE_SELECTED_B = 255;
+
+    // Music playing - uses rainbow (no static color)
+    // Music paused - dim blue
+    constexpr uint8_t PAUSED_R = 30;
+    constexpr uint8_t PAUSED_G = 50;
+    constexpr uint8_t PAUSED_B = 100;
+
+    // Standby - very dim white
+    constexpr uint8_t STANDBY_R = 20;
+    constexpr uint8_t STANDBY_G = 20;
+    constexpr uint8_t STANDBY_B = 20;
+
+    // Token refresh - purple
+    constexpr uint8_t TOKEN_REFRESH_R = 150;
+    constexpr uint8_t TOKEN_REFRESH_G = 0;
+    constexpr uint8_t TOKEN_REFRESH_B = 200;
+
+    // Searching - white
+    constexpr uint8_t SEARCHING_R = 200;
+    constexpr uint8_t SEARCHING_G = 200;
+    constexpr uint8_t SEARCHING_B = 200;
+
+    // Volume/Skip - cyan/green
+    constexpr uint8_t VOLUME_R = 0;
+    constexpr uint8_t VOLUME_G = 200;
+    constexpr uint8_t VOLUME_B = 100;
+
+    constexpr uint8_t SKIP_R = 0;
+    constexpr uint8_t SKIP_G = 200;
+    constexpr uint8_t SKIP_B = 255;
 
     // Legacy colors for compatibility
     constexpr uint8_t CONNECTING_R = 122;
@@ -167,6 +213,11 @@ public:
     void showNfcReading();
 
     /**
+     * @brief Show tag processing animation (purple alternating spin)
+     */
+    void showTagProcessing();
+
+    /**
      * @brief Show tag success (green flash then idle)
      */
     void showTagSuccess();
@@ -185,6 +236,56 @@ public:
      * @brief Show idle state (dim green, sound reactive enabled)
      */
     void showIdle();
+
+    /**
+     * @brief Show music playing animation (rainbow wave)
+     */
+    void showMusicPlaying();
+
+    /**
+     * @brief Show music paused state (dim blue breathing)
+     */
+    void showMusicPaused();
+
+    /**
+     * @brief Show standby mode (very dim white breathing)
+     */
+    void showStandby();
+
+    /**
+     * @brief Show startup animation (rainbow sweep)
+     */
+    void showStartup();
+
+    /**
+     * @brief Show token refresh (purple pulse)
+     */
+    void showTokenRefresh();
+
+    /**
+     * @brief Show device searching (white sparkle)
+     */
+    void showSearching();
+
+    /**
+     * @brief Show volume up feedback (expanding green ring)
+     */
+    void showVolumeUp();
+
+    /**
+     * @brief Show volume down feedback (contracting green ring)
+     */
+    void showVolumeDown();
+
+    /**
+     * @brief Show skip to next track (cyan chase right)
+     */
+    void showSkipTrack();
+
+    /**
+     * @brief Show previous track (cyan chase left)
+     */
+    void showPrevTrack();
 
     // =========================================================================
     // Legacy methods (kept for compatibility)
@@ -253,15 +354,69 @@ private:
     void animateSpin(uint8_t r, uint8_t g, uint8_t b);
 
     /**
+     * @brief Dual spinning animation with alternating colors
+     */
+    void animateDualSpin(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2);
+
+    /**
      * @brief Flash animation then return to idle
      */
     void animateFlash(uint8_t r, uint8_t g, uint8_t b, uint8_t flashCount);
+
+    /**
+     * @brief Rainbow wave animation for music playing
+     */
+    void animateRainbowWave();
+
+    /**
+     * @brief Slow breathing animation
+     */
+    void animateBreathing(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Rainbow sweep animation for startup
+     */
+    void animateRainbowSweep();
+
+    /**
+     * @brief Sparkle effect for searching
+     */
+    void animateSparkle(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Expanding ring effect
+     */
+    void animateExpandRing(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Contracting ring effect
+     */
+    void animateContractRing(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Chase animation in specified direction
+     * @param right True for clockwise, false for counter-clockwise
+     */
+    void animateChase(uint8_t r, uint8_t g, uint8_t b, bool right);
+
+    /**
+     * @brief Color wheel helper for rainbow effects
+     * @param wheelPos Position on color wheel (0-255)
+     * @return 32-bit color value
+     */
+    uint32_t colorWheel(uint8_t wheelPos);
+
+    uint16_t rainbowOffset_;  // Offset for rainbow animation
 
     static constexpr uint8_t ANIMATION_DELAY = 50;
     static constexpr unsigned long PULSE_INTERVAL = 30;
     static constexpr unsigned long BLINK_FAST_INTERVAL = 150;
     static constexpr unsigned long BLINK_SLOW_INTERVAL = 500;
     static constexpr unsigned long SPIN_INTERVAL = 100;
+    static constexpr unsigned long RAINBOW_INTERVAL = 50;
+    static constexpr unsigned long BREATHING_INTERVAL = 40;
+    static constexpr unsigned long SPARKLE_INTERVAL = 80;
+    static constexpr unsigned long CHASE_INTERVAL = 60;
 };
 
 #endif // LED_CONTROLLER_H

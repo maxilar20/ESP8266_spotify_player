@@ -68,6 +68,14 @@ void setup() {
     pinMode(MIC_PIN, INPUT);
 
     leds.begin();
+    leds.showStartup();
+
+    // Run startup animation for a moment
+    for (int i = 0; i < 30; i++) {
+        leds.update();
+        delay(50);
+    }
+
     leds.showWifiConnecting();
 
     initializeWifi();
@@ -220,8 +228,12 @@ void handleNfcCard() {
     NfcReadResult result = nfcReader.readSpotifyUri();
 
     if (result.success) {
-        DEBUG_PRINT(F("Playing: "));
+        DEBUG_PRINT(F("Tag read successfully: "));
         DEBUG_PRINTLN(result.spotifyUri);
+
+        // Show processing animation
+        leds.showTagProcessing();
+        DEBUG_PRINTLN(F("Processing tag and sending to Spotify..."));
 
         // Check if we have a device selected
         if (!spotify.isDeviceAvailable()) {

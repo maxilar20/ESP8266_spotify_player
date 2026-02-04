@@ -136,30 +136,63 @@ ESP8266_spotify_player/
 │       └── build.yml          # CI/CD pipeline
 ├── docs/
 │   ├── images/               # Documentation images
+│   ├── API.md               # Code documentation
 │   ├── HARDWARE.md          # Hardware assembly guide
-│   └── API.md               # Code documentation
+│   ├── SPOTIFY_SETUP.md     # Spotify configuration guide
+│   └── USER_GUIDE.md        # Complete user guide with LED status
 ├── include/
 │   ├── Config.h             # Configuration settings
+│   ├── Config_local.h       # Your local credentials (gitignored)
 │   ├── LedController.h      # LED controller interface
 │   ├── NfcReader.h          # NFC reader interface
-│   └── SpotifyClient.h      # Spotify API client interface
+│   ├── SpotifyClient.h      # Spotify API client interface
+│   └── WebServer.h          # Web server interface
 ├── src/
 │   ├── main.cpp             # Main application
 │   ├── LedController.cpp    # LED controller implementation
 │   ├── NfcReader.cpp        # NFC reader implementation
-│   └── SpotifyClient.cpp    # Spotify API client implementation
+│   ├── SpotifyClient.cpp    # Spotify API client implementation
+│   └── WebServer.cpp        # Web server implementation
 ├── platformio.ini           # PlatformIO configuration
 └── README.md               # This file
 ```
 
 ## LED Status Indicators
 
-| Color | Status |
-|-------|--------|
-| 🟡 Yellow | Connecting to WiFi |
-| 🟢 Green | Ready / Success |
-| 🔵 Blue | Reading NFC tag |
-| 🔴 Red | Error |
+The LED ring provides rich visual feedback for all device states:
+
+### Connection States
+| Animation       | Color      | Meaning               |
+| --------------- | ---------- | --------------------- |
+| 🌈 Rainbow Sweep | Multicolor | Device starting up    |
+| 🟡 Pulsing       | Yellow     | Connecting to WiFi    |
+| 🔴 Fast Blink    | Red        | WiFi connection error |
+| 🔵 Pulsing       | Blue       | Connecting to Spotify |
+| 🟠 Slow Blink    | Orange     | Spotify error         |
+| 🟣 Pulsing       | Purple     | Refreshing token      |
+
+### Operation States
+| Animation        | Color       | Meaning                 |
+| ---------------- | ----------- | ----------------------- |
+| 🟢 Solid/Reactive | Dim Green   | Ready - waiting for NFC |
+| 🔵 Spinning       | Blue        | Reading NFC tag         |
+| � Dual Spin      | Blue-Purple | Processing tag          |
+| �🟢 Flash (×3)    | Green       | Tag success - playing!  |
+| 🔴 Flash (×5)     | Red         | Tag read failed         |
+| 🩵 Flash (×2)     | Cyan        | Device selected         |
+| ⚪ Sparkle        | White       | Searching for devices   |
+
+### Playback States
+| Animation   | Color    | Meaning            |
+| ----------- | -------- | ------------------ |
+| 🌈 Wave      | Rainbow  | Music playing      |
+| 🔵 Breathing | Dim Blue | Music paused       |
+| 🩵 Chase →   | Cyan     | Skip to next track |
+| 🩵 Chase ←   | Cyan     | Previous track     |
+| 🟢 Expand    | Teal     | Volume up          |
+| 🟢 Contract  | Teal     | Volume down        |
+
+📖 **See [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for detailed LED animations and complete usage instructions.**
 
 ## Troubleshooting
 
