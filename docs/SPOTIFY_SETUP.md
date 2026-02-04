@@ -119,7 +119,7 @@ python get_token.py
    ```bash
    # First, encode your credentials (client_id:client_secret) in base64
    echo -n "YOUR_CLIENT_ID:YOUR_CLIENT_SECRET" | base64
-   
+
    # Then make the request
    curl -X POST "https://accounts.spotify.com/api/token" \
      -H "Authorization: Basic YOUR_BASE64_CREDENTIALS" \
@@ -156,6 +156,35 @@ Then build and upload:
 ```bash
 pio run -t upload
 ```
+
+## Step 5: Using the Web Interface
+
+After uploading, you can select your Spotify device via the web interface:
+
+1. Connect to the same WiFi network as your ESP8266
+2. Open a browser and go to `http://<ESP8266-IP-ADDRESS>/`
+   - The IP address is shown in the serial monitor during boot
+3. The web page shows:
+   - Current connection status (WiFi, Spotify auth, selected device)
+   - A dropdown to select from available Spotify devices
+4. Select your device and click "Set Device"
+5. The LED ring will flash cyan to confirm device selection
+
+**Note**: Make sure Spotify is open/playing on at least one device for it to appear in the dropdown.
+
+## LED Feedback Reference
+
+| LED Pattern                | Meaning                           |
+| -------------------------- | --------------------------------- |
+| Yellow pulsing             | Connecting to WiFi                |
+| Red fast blink             | WiFi error/disconnected           |
+| Blue pulsing               | Connecting to Spotify             |
+| Orange slow blink          | Spotify error (auth/device issue) |
+| Blue spinning              | Reading NFC tag                   |
+| Green flash (3x)           | Tag played successfully           |
+| Red flash (5x)             | Tag failed to play                |
+| Cyan flash (2x)            | Device selected via web UI        |
+| Dim green (sound reactive) | Idle, ready for NFC               |
 
 ## Troubleshooting
 

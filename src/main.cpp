@@ -5,6 +5,11 @@
  * Main application that combines NFC tag reading with Spotify playback control.
  * When an NFC tag containing a Spotify URI is detected, the corresponding
  * album/playlist is played on the configured Spotify device.
+ *
+ * Features:
+ * - Web interface for device selection at http://<device-ip>/
+ * - LED ring feedback for different states
+ * - Sound reactive LED visualization
  */
 
 #include <Arduino.h>
@@ -15,6 +20,7 @@
 #include "SpotifyClient.h"
 #include "NfcReader.h"
 #include "LedController.h"
+#include "WebServer.h"
 
 // =============================================================================
 // Global Objects
@@ -28,12 +34,15 @@ SpotifyClient spotify(
     SPOTIFY_DEVICE_NAME,
     SPOTIFY_REFRESH_TOKEN
 );
+WebServerController webServer(WEB_SERVER_PORT, spotify, leds);
 
 // =============================================================================
 // Timing Variables
 // =============================================================================
 
 unsigned long lastWifiCheck = 0;
+bool wifiConnected = false;
+bool spotifyConnected = false;
 
 // =============================================================================
 // Function Prototypes
@@ -43,6 +52,7 @@ void initializeWifi();
 void checkWifiConnection();
 void handleNfcCard();
 void updateSoundReactive();
+void initializeSpotify();
 
 // =============================================================================
 // Setup
@@ -58,28 +68,31 @@ void setup() {
     pinMode(MIC_PIN, INPUT);
 
     leds.begin();
-    leds.showConnecting();
+    leds.showWifiConnecting();
 
     initializeWifi();
 
-    DEBUG_PRINTLN(F("Initializing Spotify client..."));
-    if (spotify.begin()) {
-        DEBUG_PRINTLN(F("Spotify client initialized successfully"));
-        leds.showSuccess();
-    } else {
-        DEBUG_PRINTLN(F("Warning: Spotify client initialization incomplete"));
-        leds.showError();
-        delay(2000);
-        leds.showConnecting();
+    if (wifiConnected) {
+        initializeSpotify();
+
+        // Start web server
+        webServer.begin();
+        DEBUG_PRINT(F("Web interface available at: http://"));
+        DEBUG_PRINTLN(WiFi.localIP());
     }
 
     DEBUG_PRINTLN(F("Initializing NFC reader..."));
     if (nfcReader.begin()) {
         DEBUG_PRINTLN(F("NFC reader initialized successfully"));
-        leds.showSuccess();
     } else {
         DEBUG_PRINTLN(F("Warning: NFC reader initialization failed"));
-        leds.showError();
+        leds.showTagFailure();
+        delay(2000);
+    }
+
+    // Show idle state when ready
+    if (wifiConnected && spotifyConnected) {
+        leds.showIdle();
     }
 
     DEBUG_PRINTLN(F("Setup complete. Ready to scan NFC tags."));
@@ -91,8 +104,19 @@ void setup() {
 
 void loop() {
     checkWifiConnection();
-    updateSoundReactive();
 
+    // Handle web server requests
+    if (wifiConnected) {
+        webServer.handleClient();
+    }
+
+    // Update LEDs
+    if (leds.getState() == LedState::IDLE) {
+        updateSoundReactive();
+    }
+    leds.update();
+
+    // Check for NFC cards
     if (nfcReader.isNewCardPresent()) {
         handleNfcCard();
     }
@@ -108,12 +132,20 @@ void initializeWifi() {
     WiFiManager wifiManager;
     wifiManager.setConfigPortalTimeout(180);
 
+    // Custom callback during config portal
+    wifiManager.setAPCallback([](WiFiManager* mgr) {
+        DEBUG_PRINTLN(F("Entered config portal mode"));
+        // Could show special LED pattern here
+    });
+
     if (!wifiManager.autoConnect(WIFI_AP_NAME, WIFI_AP_PASSWORD)) {
         DEBUG_PRINTLN(F("Failed to connect and hit timeout"));
+        leds.showWifiError();
         delay(3000);
         ESP.restart();
     }
 
+    wifiConnected = true;
     DEBUG_PRINTLN(F("WiFi connected"));
     DEBUG_PRINT(F("IP address: "));
     DEBUG_PRINTLN(WiFi.localIP());
@@ -129,17 +161,51 @@ void checkWifiConnection() {
     lastWifiCheck = currentTime;
 
     if (WiFi.status() != WL_CONNECTED) {
+        wifiConnected = false;
         DEBUG_PRINTLN(F("WiFi disconnected, attempting reconnection..."));
+        leds.showWifiError();
         WiFi.reconnect();
 
         // Give it a few seconds to reconnect
         delay(5000);
 
         if (WiFi.status() == WL_CONNECTED) {
+            wifiConnected = true;
             DEBUG_PRINTLN(F("WiFi reconnected!"));
             DEBUG_PRINT(F("IP: "));
             DEBUG_PRINTLN(WiFi.localIP());
+
+            // Restore appropriate state
+            if (spotifyConnected) {
+                leds.showIdle();
+            } else {
+                leds.showSpotifyError();
+            }
         }
+    } else if (!wifiConnected) {
+        // Recovered from disconnection
+        wifiConnected = true;
+    }
+}
+
+// =============================================================================
+// Spotify Functions
+// =============================================================================
+
+void initializeSpotify() {
+    DEBUG_PRINTLN(F("Initializing Spotify client..."));
+    leds.showSpotifyConnecting();
+
+    if (spotify.begin()) {
+        spotifyConnected = true;
+        DEBUG_PRINTLN(F("Spotify client initialized successfully"));
+        leds.showTagSuccess();
+    } else {
+        spotifyConnected = false;
+        DEBUG_PRINTLN(F("Warning: Spotify client initialization incomplete"));
+        DEBUG_PRINTLN(F("Use the web interface to select a device"));
+        leds.showSpotifyError();
+        delay(2000);
     }
 }
 
@@ -148,7 +214,8 @@ void checkWifiConnection() {
 // =============================================================================
 
 void handleNfcCard() {
-    leds.showReading();
+    DEBUG_PRINTLN(F("NFC card detected, reading..."));
+    leds.showNfcReading();
 
     NfcReadResult result = nfcReader.readSpotifyUri();
 
@@ -156,20 +223,41 @@ void handleNfcCard() {
         DEBUG_PRINT(F("Playing: "));
         DEBUG_PRINTLN(result.spotifyUri);
 
+        // Check if we have a device selected
+        if (!spotify.isDeviceAvailable()) {
+            DEBUG_PRINTLN(F("No device selected. Use web interface to select a device."));
+            leds.showSpotifyError();
+            delay(2000);
+            leds.showIdle();
+            return;
+        }
+
+        // Check if we're authenticated
+        if (!spotify.isAuthenticated()) {
+            DEBUG_PRINTLN(F("Not authenticated with Spotify"));
+            leds.showSpotifyError();
+
+            // Try to refresh token
+            if (spotify.refreshToken()) {
+                DEBUG_PRINTLN(F("Token refreshed, retrying..."));
+            } else {
+                delay(2000);
+                leds.showIdle();
+                return;
+            }
+        }
+
         if (spotify.playUri(result.spotifyUri)) {
-            leds.showSuccess();
+            DEBUG_PRINTLN(F("Playback started successfully!"));
+            leds.showTagSuccess();
         } else {
             DEBUG_PRINTLN(F("Failed to start playback"));
-            leds.showError();
-            delay(1000);
-            leds.showSuccess();
+            leds.showTagFailure();
         }
     } else {
         DEBUG_PRINT(F("NFC read failed: "));
         DEBUG_PRINTLN(result.errorMessage);
-        leds.showError();
-        delay(1000);
-        leds.showSuccess();
+        leds.showTagFailure();
     }
 }
 
@@ -180,5 +268,4 @@ void handleNfcCard() {
 void updateSoundReactive() {
     int audioLevel = analogRead(MIC_PIN);
     leds.updateSoundReactive(audioLevel);
-    leds.update();
 }

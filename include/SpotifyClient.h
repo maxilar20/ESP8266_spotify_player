@@ -37,6 +37,18 @@ struct HttpResult
 };
 
 /**
+ * @brief Spotify device information
+ */
+struct SpotifyDevice
+{
+    String id;
+    String name;
+    String type;
+    bool isActive;
+    bool isRestricted;
+};
+
+/**
  * @brief HTTP methods supported by the client
  */
 enum class HttpMethod
@@ -138,6 +150,52 @@ public:
      * @return true if device ID is set
      */
     bool isDeviceAvailable() const;
+
+    /**
+     * @brief Get list of available Spotify devices
+     * @param devices Array to fill with device info (caller provides array)
+     * @param maxDevices Maximum number of devices to return
+     * @return Number of devices found
+     */
+    int getAvailableDevices(SpotifyDevice* devices, int maxDevices);
+
+    /**
+     * @brief Get devices as JSON string (for web API)
+     * @return JSON array of devices
+     */
+    String getDevicesJson();
+
+    /**
+     * @brief Set the target device by ID
+     * @param deviceId Spotify device ID to use
+     * @return true if device was set successfully
+     */
+    bool setDeviceById(const String& deviceId);
+
+    /**
+     * @brief Set the target device by name
+     * @param name Spotify device name to use
+     * @return true if device was found and set
+     */
+    bool setDeviceByName(const String& name);
+
+    /**
+     * @brief Get current device ID
+     * @return Current device ID or empty string
+     */
+    String getDeviceId() const;
+
+    /**
+     * @brief Get current device name
+     * @return Current device name or empty string
+     */
+    String getDeviceName() const;
+
+    /**
+     * @brief Refresh the access token
+     * @return true if successful
+     */
+    bool refreshToken();
 
 private:
     WiFiClientSecure wifiClient_;

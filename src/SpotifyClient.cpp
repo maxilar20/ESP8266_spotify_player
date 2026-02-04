@@ -187,6 +187,139 @@ bool SpotifyClient::isDeviceAvailable() const {
     return !deviceId_.isEmpty();
 }
 
+String SpotifyClient::getDeviceId() const {
+    return deviceId_;
+}
+
+String SpotifyClient::getDeviceName() const {
+    return deviceName_;
+}
+
+bool SpotifyClient::refreshToken() {
+    return fetchAccessToken();
+}
+
+int SpotifyClient::getAvailableDevices(SpotifyDevice* devices, int maxDevices) {
+    HttpResult result = callApi(HttpMethod::GET, SPOTIFY_DEVICES_URL);
+
+    if (!result.isSuccess()) {
+        DEBUG_PRINT(F("Failed to get devices: "));
+        DEBUG_PRINTLN(result.httpCode);
+        return 0;
+    }
+
+    // Parse devices from JSON
+    int deviceCount = 0;
+    String json = result.payload;
+
+    // Find "devices" array
+    int devicesStart = json.indexOf("\"devices\"");
+    if (devicesStart < 0) return 0;
+
+    int arrayStart = json.indexOf('[', devicesStart);
+    if (arrayStart < 0) return 0;
+
+    int pos = arrayStart + 1;
+
+    while (deviceCount < maxDevices) {
+        // Find next device object
+        int objStart = json.indexOf('{', pos);
+        if (objStart < 0) break;
+
+        int objEnd = json.indexOf('}', objStart);
+        if (objEnd < 0) break;
+
+        String deviceObj = json.substring(objStart, objEnd + 1);
+
+        // Extract device fields
+        devices[deviceCount].id = parseJsonValue("id", deviceObj);
+        devices[deviceCount].name = parseJsonValue("name", deviceObj);
+        devices[deviceCount].type = parseJsonValue("type", deviceObj);
+
+        // Parse boolean fields
+        String isActiveStr = parseJsonValue("is_active", deviceObj);
+        devices[deviceCount].isActive = (isActiveStr == "true");
+
+        String isRestrictedStr = parseJsonValue("is_restricted", deviceObj);
+        devices[deviceCount].isRestricted = (isRestrictedStr == "true");
+
+        if (!devices[deviceCount].id.isEmpty()) {
+            deviceCount++;
+        }
+
+        pos = objEnd + 1;
+    }
+
+    return deviceCount;
+}
+
+String SpotifyClient::getDevicesJson() {
+    const int MAX_DEVICES = 10;
+    SpotifyDevice devices[MAX_DEVICES];
+
+    int count = getAvailableDevices(devices, MAX_DEVICES);
+
+    String json = "[";
+    for (int i = 0; i < count; i++) {
+        if (i > 0) json += ",";
+        json += "{";
+        json += "\"id\":\"" + devices[i].id + "\",";
+        json += "\"name\":\"" + devices[i].name + "\",";
+        json += "\"type\":\"" + devices[i].type + "\",";
+        json += "\"is_active\":" + String(devices[i].isActive ? "true" : "false") + ",";
+        json += "\"is_restricted\":" + String(devices[i].isRestricted ? "true" : "false");
+        json += "}";
+    }
+    json += "]";
+
+    return json;
+}
+
+bool SpotifyClient::setDeviceById(const String& deviceId) {
+    if (deviceId.isEmpty()) {
+        return false;
+    }
+
+    // Verify device exists by fetching device list
+    const int MAX_DEVICES = 10;
+    SpotifyDevice devices[MAX_DEVICES];
+    int count = getAvailableDevices(devices, MAX_DEVICES);
+
+    for (int i = 0; i < count; i++) {
+        if (devices[i].id == deviceId) {
+            deviceId_ = deviceId;
+            deviceName_ = devices[i].name;
+            DEBUG_PRINT(F("Device set to: "));
+            DEBUG_PRINTLN(deviceName_);
+            return true;
+        }
+    }
+
+    DEBUG_PRINTLN(F("Device ID not found in available devices"));
+    return false;
+}
+
+bool SpotifyClient::setDeviceByName(const String& name) {
+    const int MAX_DEVICES = 10;
+    SpotifyDevice devices[MAX_DEVICES];
+    int count = getAvailableDevices(devices, MAX_DEVICES);
+
+    for (int i = 0; i < count; i++) {
+        if (devices[i].name == name) {
+            deviceId_ = devices[i].id;
+            deviceName_ = devices[i].name;
+            DEBUG_PRINT(F("Device set to: "));
+            DEBUG_PRINTLN(deviceName_);
+            return true;
+        }
+    }
+
+    DEBUG_PRINT(F("Device '"));
+    DEBUG_PRINT(name);
+    DEBUG_PRINTLN(F("' not found"));
+    return false;
+}
+
 HttpResult SpotifyClient::callApi(HttpMethod method, const String& url, const String& body) {
     HttpResult result;
     result.httpCode = 0;
@@ -229,26 +362,47 @@ HttpResult SpotifyClient::callApi(HttpMethod method, const String& url, const St
 
 String SpotifyClient::parseJsonValue(const String& key, const String& json) {
     String value;
-    int index = json.indexOf(key);
+
+    // Search for quoted key pattern: "key":
+    String searchPattern = "\"" + key + "\"";
+    int index = json.indexOf(searchPattern);
 
     if (index < 0) {
         return value;
     }
 
-    bool copying = false;
-    for (unsigned int i = index; i < json.length(); i++) {
-        if (copying) {
+    // Find the colon after the key
+    int colonPos = json.indexOf(':', index);
+    if (colonPos < 0) return value;
+
+    // Skip whitespace after colon
+    int valueStart = colonPos + 1;
+    while (valueStart < (int)json.length() && (json.charAt(valueStart) == ' ' || json.charAt(valueStart) == '\t')) {
+        valueStart++;
+    }
+
+    if (valueStart >= (int)json.length()) return value;
+
+    // Check if value is quoted
+    if (json.charAt(valueStart) == '"') {
+        // String value - extract until closing quote
+        valueStart++; // Skip opening quote
+        for (int i = valueStart; i < (int)json.length(); i++) {
             char c = json.charAt(i);
-            if (c == '"' || c == ',') {
+            if (c == '"' && (i == valueStart || json.charAt(i-1) != '\\')) {
+                // Found closing quote (not escaped)
                 break;
             }
             value += c;
-        } else if (json.charAt(i) == ':') {
-            copying = true;
-            // Skip opening quote if present
-            if (i + 1 < json.length() && json.charAt(i + 1) == '"') {
-                i++;
+        }
+    } else {
+        // Non-string value (number, boolean, null) - extract until comma or }
+        for (int i = valueStart; i < (int)json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\n' || c == '\r') {
+                break;
             }
+            value += c;
         }
     }
 

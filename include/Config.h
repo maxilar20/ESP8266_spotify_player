@@ -44,6 +44,9 @@
 #define WIFI_AP_PASSWORD "configme123"
 #define WIFI_RECONNECT_DELAY 20000 // Milliseconds between reconnection attempts
 
+// Web Server Settings
+#define WEB_SERVER_PORT 80
+
 // =============================================================================
 // Spotify API Configuration
 // =============================================================================
