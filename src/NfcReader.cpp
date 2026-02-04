@@ -1,13 +1,24 @@
 /**
  * @file NfcReader.cpp
  * @brief Implementation of NFC Reader for Spotify tags
+ *
+ * Features:
+ * - Interrupt-driven card detection
+ * - Non-blocking state machine
  */
 
 #include "NfcReader.h"
 
-NfcReader::NfcReader(uint8_t ssPin, uint8_t rstPin)
+// Static members initialization
+NfcReader* NfcReader::instance_ = nullptr;
+volatile bool NfcReader::cardDetectedFlag_ = false;
+
+NfcReader::NfcReader(uint8_t ssPin, uint8_t rstPin, int8_t irqPin)
     : mfrc522_(ssPin, rstPin)
+    , irqPin_(irqPin)
+    , state_(NfcState::IDLE)
 {
+    instance_ = this;
 }
 
 bool NfcReader::begin() {
@@ -23,20 +34,99 @@ bool NfcReader::begin() {
 
     DEBUG_PRINT(F("NFC reader initialized. Version: 0x"));
     DEBUG_PRINTLN(String(version, HEX));
+
+    // Setup interrupt if pin is configured
+    if (irqPin_ >= 0) {
+        setupInterrupt();
+        DEBUG_PRINTLN(F("NFC interrupt mode enabled"));
+    } else {
+        DEBUG_PRINTLN(F("NFC polling mode enabled"));
+    }
+
     return true;
 }
 
+void NfcReader::setupInterrupt() {
+    if (irqPin_ < 0) return;
+
+    pinMode(irqPin_, INPUT_PULLUP);
+
+    // Clear any pending interrupts on the MFRC522
+    mfrc522_.PCD_WriteRegister(MFRC522::ComIrqReg, 0x7F);
+
+    // Enable interrupt on card detection
+    // Set IRQ pin to signal when a card is detected
+    mfrc522_.PCD_WriteRegister(MFRC522::DivIEnReg, 0x90);  // Enable IRQ for card detection
+
+    // Attach interrupt handler
+    attachInterrupt(digitalPinToInterrupt(irqPin_), handleInterrupt, FALLING);
+
+    // Start the antenna and enable receiving
+    mfrc522_.PCD_AntennaOn();
+}
+
+void IRAM_ATTR NfcReader::handleInterrupt() {
+    cardDetectedFlag_ = true;
+    if (instance_) {
+        instance_->state_ = NfcState::CARD_DETECTED;
+    }
+}
+
+bool NfcReader::isCardDetectedByInterrupt() const {
+    return cardDetectedFlag_;
+}
+
+void NfcReader::clearInterruptFlag() {
+    cardDetectedFlag_ = false;
+    if (irqPin_ >= 0) {
+        // Clear interrupt flags on the MFRC522
+        mfrc522_.PCD_WriteRegister(MFRC522::ComIrqReg, 0x7F);
+    }
+}
+
+NfcState NfcReader::getState() const {
+    return state_;
+}
+
+void NfcReader::resetState() {
+    state_ = NfcState::IDLE;
+    clearInterruptFlag();
+}
+
+bool NfcReader::isInterruptMode() const {
+    return irqPin_ >= 0;
+}
+
 bool NfcReader::isNewCardPresent() {
+    // Check interrupt flag first if in interrupt mode
+    if (irqPin_ >= 0 && cardDetectedFlag_) {
+        // Verify card is actually present
+        if (mfrc522_.PICC_IsNewCardPresent() && mfrc522_.PICC_ReadCardSerial()) {
+            state_ = NfcState::CARD_DETECTED;
+            return true;
+        }
+        // False positive, clear flag
+        clearInterruptFlag();
+        return false;
+    }
+
+    // Polling mode fallback
     if (!mfrc522_.PICC_IsNewCardPresent()) {
         return false;
     }
-    return mfrc522_.PICC_ReadCardSerial();
+    if (!mfrc522_.PICC_ReadCardSerial()) {
+        return false;
+    }
+
+    state_ = NfcState::CARD_DETECTED;
+    return true;
 }
 
 NfcReadResult NfcReader::readSpotifyUri() {
     NfcReadResult result;
     result.success = false;
 
+    state_ = NfcState::READING;
     DEBUG_PRINTLN(F("Reading NFC tag data..."));
 
     byte buffer[READ_BUFFER_SIZE];
@@ -56,6 +146,7 @@ NfcReadResult NfcReader::readSpotifyUri() {
             result.errorMessage += mfrc522_.GetStatusCodeName(status);
             DEBUG_PRINTLN(result.errorMessage);
 
+            state_ = NfcState::READ_FAILED;
             haltCard();
             return result;
         }
@@ -72,6 +163,9 @@ NfcReadResult NfcReader::readSpotifyUri() {
 
     if (!result.success) {
         result.errorMessage = F("No valid Spotify URI found on tag");
+        state_ = NfcState::READ_FAILED;
+    } else {
+        state_ = NfcState::READ_COMPLETE;
     }
 
     DEBUG_PRINT(F("Parsed URI: "));
@@ -84,6 +178,8 @@ NfcReadResult NfcReader::readSpotifyUri() {
 void NfcReader::haltCard() {
     mfrc522_.PICC_HaltA();
     mfrc522_.PCD_StopCrypto1();
+    clearInterruptFlag();
+    state_ = NfcState::IDLE;
 }
 
 String NfcReader::parseTagData(byte* dataBuffer) {
