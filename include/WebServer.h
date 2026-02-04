@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <ESP8266WebServer.h>
+#include <ArduinoJson.h>
 #include "SpotifyClient.h"
 #include "LedController.h"
 #include "Config.h"
@@ -44,6 +45,26 @@ public:
      * @return IP address string
      */
     String getIPAddress() const;
+
+    /**
+     * @brief Notify of status change (no-op for sync server, kept for API compatibility)
+     */
+    void notifyStatusChange();
+
+    /**
+     * @brief Notify of NFC tag detection (no-op for sync server, kept for API compatibility)
+     */
+    void notifyNfcTagDetected(const String& uri);
+
+    /**
+     * @brief Notify of playback started (no-op for sync server, kept for API compatibility)
+     */
+    void notifyPlaybackStarted(const String& uri);
+
+    /**
+     * @brief Notify of error (no-op for sync server, kept for API compatibility)
+     */
+    void notifyError(const String& errorMessage);
 
 private:
     ESP8266WebServer server_;

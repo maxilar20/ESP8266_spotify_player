@@ -3,6 +3,10 @@
  * @brief Spotify Web API Client for ESP8266
  *
  * Provides interface for Spotify playback control via the Web API.
+ * Features:
+ * - ArduinoJson for efficient JSON parsing
+ * - Exponential backoff for retry logic
+ * - Non-blocking operation support
  */
 
 #ifndef SPOTIFY_CLIENT_H
@@ -10,6 +14,7 @@
 
 #include <Arduino.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 #include "Config.h"
 
 /**
@@ -33,6 +38,21 @@ struct HttpResult
     bool isNotFound() const
     {
         return httpCode == 404;
+    }
+
+    bool isRateLimited() const
+    {
+        return httpCode == 429;
+    }
+
+    bool isServerError() const
+    {
+        return httpCode >= 500 && httpCode < 600;
+    }
+
+    bool shouldRetry() const
+    {
+        return isRateLimited() || isServerError() || httpCode == -1;
     }
 };
 
@@ -59,8 +79,19 @@ enum class HttpMethod
 };
 
 /**
+ * @brief Retry configuration for exponential backoff
+ */
+struct RetryConfig
+{
+    uint8_t maxRetries = SPOTIFY_MAX_RETRIES;
+    uint32_t initialDelayMs = SPOTIFY_INITIAL_RETRY_DELAY;
+    uint32_t maxDelayMs = SPOTIFY_MAX_RETRY_DELAY;
+    float backoffMultiplier = SPOTIFY_BACKOFF_MULTIPLIER;
+};
+
+/**
  * @class SpotifyClient
- * @brief Client for Spotify Web API
+ * @brief Client for Spotify Web API with ArduinoJson and exponential backoff
  */
 class SpotifyClient
 {
@@ -95,6 +126,12 @@ public:
         const String &clientSecret,
         const String &deviceName,
         const String &refreshToken);
+
+    /**
+     * @brief Set retry configuration for exponential backoff
+     * @param config Retry configuration settings
+     */
+    void setRetryConfig(const RetryConfig& config);
 
     /**
      * @brief Check if credentials are configured
@@ -207,8 +244,12 @@ private:
     String deviceName_;
     String deviceId_;
 
+    RetryConfig retryConfig_;
+    uint32_t lastRetryTime_ = 0;
+    uint8_t currentRetryCount_ = 0;
+
     /**
-     * @brief Make an authenticated API call
+     * @brief Make an authenticated API call with retry logic
      * @param method HTTP method
      * @param url Full URL to call
      * @param body Request body (optional)
@@ -217,12 +258,29 @@ private:
     HttpResult callApi(HttpMethod method, const String &url, const String &body = "");
 
     /**
-     * @brief Parse a JSON value by key (simple parser)
-     * @param key Key to find
-     * @param json JSON string to parse
-     * @return Value string or empty if not found
+     * @brief Make an authenticated API call with exponential backoff
+     * @param method HTTP method
+     * @param url Full URL to call
+     * @param body Request body (optional)
+     * @return HttpResult with response code and payload
      */
-    static String parseJsonValue(const String &key, const String &json);
+    HttpResult callApiWithRetry(HttpMethod method, const String &url, const String &body = "");
+
+    /**
+     * @brief Calculate delay for exponential backoff
+     * @param retryCount Current retry attempt number
+     * @return Delay in milliseconds
+     */
+    uint32_t calculateBackoffDelay(uint8_t retryCount) const;
+
+    /**
+     * @brief Parse devices from JSON response using ArduinoJson
+     * @param json JSON response from devices endpoint
+     * @param devices Array to fill with device info
+     * @param maxDevices Maximum number of devices
+     * @return Number of devices parsed
+     */
+    int parseDevicesJson(const String& json, SpotifyDevice* devices, int maxDevices);
 
     /**
      * @brief Extract device ID from devices JSON response

@@ -311,24 +311,21 @@ void WebServerController::handleSetDevice() {
 
     String body = server_.arg("plain");
 
-    // Parse device_id from JSON body
-    int idStart = body.indexOf("\"device_id\"");
-    if (idStart < 0) {
+    // Parse JSON with ArduinoJson
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, body);
+
+    if (error) {
+        server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    if (!doc["device_id"].is<String>()) {
         server_.send(400, "application/json", "{\"error\":\"device_id not found\"}");
         return;
     }
 
-    // Extract the device ID value
-    int colonPos = body.indexOf(':', idStart);
-    int quoteStart = body.indexOf('"', colonPos);
-    int quoteEnd = body.indexOf('"', quoteStart + 1);
-
-    if (quoteStart < 0 || quoteEnd < 0) {
-        server_.send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
-        return;
-    }
-
-    String deviceId = body.substring(quoteStart + 1, quoteEnd);
+    String deviceId = doc["device_id"].as<String>();
 
     DEBUG_PRINT(F("Setting device to: "));
     DEBUG_PRINTLN(deviceId);
@@ -336,7 +333,13 @@ void WebServerController::handleSetDevice() {
     if (spotify_.setDeviceById(deviceId)) {
         leds_.showDeviceSelected();
 
-        String response = "{\"success\":true,\"device_id\":\"" + deviceId + "\",\"device_name\":\"" + spotify_.getDeviceName() + "\"}";
+        JsonDocument responseDoc;
+        responseDoc["success"] = true;
+        responseDoc["device_id"] = deviceId;
+        responseDoc["device_name"] = spotify_.getDeviceName();
+
+        String response;
+        serializeJson(responseDoc, response);
         server_.send(200, "application/json", response);
     } else {
         server_.send(404, "application/json", "{\"error\":\"Device not found or unavailable\"}");
@@ -346,14 +349,15 @@ void WebServerController::handleSetDevice() {
 void WebServerController::handleStatus() {
     server_.sendHeader("Access-Control-Allow-Origin", "*");
 
-    String json = "{";
-    json += "\"authenticated\":" + String(spotify_.isAuthenticated() ? "true" : "false") + ",";
-    json += "\"device_available\":" + String(spotify_.isDeviceAvailable() ? "true" : "false") + ",";
-    json += "\"current_device_id\":\"" + spotify_.getDeviceId() + "\",";
-    json += "\"current_device_name\":\"" + spotify_.getDeviceName() + "\",";
-    json += "\"ip_address\":\"" + getIPAddress() + "\"";
-    json += "}";
+    JsonDocument doc;
+    doc["authenticated"] = spotify_.isAuthenticated();
+    doc["device_available"] = spotify_.isDeviceAvailable();
+    doc["current_device_id"] = spotify_.getDeviceId();
+    doc["current_device_name"] = spotify_.getDeviceName();
+    doc["ip_address"] = getIPAddress();
 
+    String json;
+    serializeJson(doc, json);
     server_.send(200, "application/json", json);
 }
 
@@ -364,12 +368,13 @@ void WebServerController::handleNotFound() {
 void WebServerController::handleWifiInfo() {
     server_.sendHeader("Access-Control-Allow-Origin", "*");
 
-    String json = "{";
-    json += "\"ssid\":\"" + WiFi.SSID() + "\",";
-    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-    json += "\"rssi\":" + String(WiFi.RSSI());
-    json += "}";
+    JsonDocument doc;
+    doc["ssid"] = WiFi.SSID();
+    doc["ip"] = WiFi.localIP().toString();
+    doc["rssi"] = WiFi.RSSI();
 
+    String json;
+    serializeJson(doc, json);
     server_.send(200, "application/json", json);
 }
 
@@ -400,4 +405,21 @@ void WebServerController::handleRestart() {
     delay(500);
 
     ESP.restart();
+}
+
+// No-op methods for API compatibility with main.cpp
+void WebServerController::notifyStatusChange() {
+    // No-op for synchronous server
+}
+
+void WebServerController::notifyNfcTagDetected(const String& /* uri */) {
+    // No-op for synchronous server
+}
+
+void WebServerController::notifyPlaybackStarted(const String& /* uri */) {
+    // No-op for synchronous server
+}
+
+void WebServerController::notifyError(const String& /* errorMessage */) {
+    // No-op for synchronous server
 }

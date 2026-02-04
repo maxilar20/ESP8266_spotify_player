@@ -1,6 +1,11 @@
 /**
  * @file SpotifyClient.cpp
  * @brief Implementation of Spotify Web API Client
+ *
+ * Features:
+ * - ArduinoJson for efficient JSON parsing
+ * - Exponential backoff for retry logic
+ * - Non-blocking friendly design
  */
 
 #include "SpotifyClient.h"
@@ -41,6 +46,10 @@ void SpotifyClient::setCredentials(
     // Clear existing tokens when credentials change
     accessToken_ = "";
     deviceId_ = "";
+}
+
+void SpotifyClient::setRetryConfig(const RetryConfig& config) {
+    retryConfig_ = config;
 }
 
 bool SpotifyClient::hasCredentials() const {
@@ -91,9 +100,19 @@ bool SpotifyClient::fetchAccessToken() {
     }
 
     String payload = http.getString();
-    accessToken_ = parseJsonValue("access_token", payload);
-
     http.end();
+
+    // Parse with ArduinoJson
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload);
+
+    if (error) {
+        DEBUG_PRINT(F("JSON parse error: "));
+        DEBUG_PRINTLN(error.c_str());
+        return false;
+    }
+
+    accessToken_ = doc["access_token"].as<String>();
 
     if (accessToken_.isEmpty()) {
         DEBUG_PRINTLN(F("Failed to parse access token from response"));
@@ -105,7 +124,7 @@ bool SpotifyClient::fetchAccessToken() {
 }
 
 bool SpotifyClient::discoverDevice() {
-    HttpResult result = callApi(HttpMethod::GET, SPOTIFY_DEVICES_URL);
+    HttpResult result = callApiWithRetry(HttpMethod::GET, SPOTIFY_DEVICES_URL);
 
     if (!result.isSuccess()) {
         DEBUG_PRINT(F("Failed to get devices: "));
@@ -131,22 +150,31 @@ bool SpotifyClient::playUri(const String& contextUri) {
     DEBUG_PRINT(F("Playing URI: "));
     DEBUG_PRINTLN(contextUri);
 
-    String body = "{\"context_uri\":\"" + contextUri + "\",\"offset\":{\"position\":0,\"position_ms\":0}}";
+    // Build JSON body with ArduinoJson
+    JsonDocument doc;
+    doc["context_uri"] = contextUri;
+    JsonObject offset = doc["offset"].to<JsonObject>();
+    offset["position"] = 0;
+    offset["position_ms"] = 0;
+
+    String body;
+    serializeJson(doc, body);
+
     String url = String(SPOTIFY_PLAY_URL) + "?device_id=" + deviceId_;
 
-    HttpResult result = callApi(HttpMethod::PUT, url, body);
+    HttpResult result = callApiWithRetry(HttpMethod::PUT, url, body);
 
     // Handle specific error cases
     if (result.isNotFound()) {
         DEBUG_PRINTLN(F("Device not found, rediscovering..."));
         if (discoverDevice()) {
             url = String(SPOTIFY_PLAY_URL) + "?device_id=" + deviceId_;
-            result = callApi(HttpMethod::PUT, url, body);
+            result = callApiWithRetry(HttpMethod::PUT, url, body);
         }
     } else if (result.isUnauthorized()) {
         DEBUG_PRINTLN(F("Token expired, refreshing..."));
         if (fetchAccessToken()) {
-            result = callApi(HttpMethod::PUT, url, body);
+            result = callApiWithRetry(HttpMethod::PUT, url, body);
         }
     }
 
@@ -165,7 +193,7 @@ bool SpotifyClient::nextTrack() {
     DEBUG_PRINTLN(F("Skipping to next track"));
 
     String url = String(SPOTIFY_NEXT_URL) + "?device_id=" + deviceId_;
-    HttpResult result = callApi(HttpMethod::POST, url);
+    HttpResult result = callApiWithRetry(HttpMethod::POST, url);
 
     return result.isSuccess();
 }
@@ -174,7 +202,7 @@ bool SpotifyClient::enableShuffle() {
     DEBUG_PRINTLN(F("Enabling shuffle"));
 
     String url = String(SPOTIFY_SHUFFLE_URL) + "?state=true&device_id=" + deviceId_;
-    HttpResult result = callApi(HttpMethod::PUT, url);
+    HttpResult result = callApiWithRetry(HttpMethod::PUT, url);
 
     return result.isSuccess();
 }
@@ -200,7 +228,7 @@ bool SpotifyClient::refreshToken() {
 }
 
 int SpotifyClient::getAvailableDevices(SpotifyDevice* devices, int maxDevices) {
-    HttpResult result = callApi(HttpMethod::GET, SPOTIFY_DEVICES_URL);
+    HttpResult result = callApiWithRetry(HttpMethod::GET, SPOTIFY_DEVICES_URL);
 
     if (!result.isSuccess()) {
         DEBUG_PRINT(F("Failed to get devices: "));
@@ -208,46 +236,34 @@ int SpotifyClient::getAvailableDevices(SpotifyDevice* devices, int maxDevices) {
         return 0;
     }
 
-    // Parse devices from JSON
+    return parseDevicesJson(result.payload, devices, maxDevices);
+}
+
+int SpotifyClient::parseDevicesJson(const String& json, SpotifyDevice* devices, int maxDevices) {
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, json);
+
+    if (error) {
+        DEBUG_PRINT(F("JSON parse error: "));
+        DEBUG_PRINTLN(error.c_str());
+        return 0;
+    }
+
+    JsonArray devicesArray = doc["devices"].as<JsonArray>();
     int deviceCount = 0;
-    String json = result.payload;
 
-    // Find "devices" array
-    int devicesStart = json.indexOf("\"devices\"");
-    if (devicesStart < 0) return 0;
+    for (JsonObject device : devicesArray) {
+        if (deviceCount >= maxDevices) break;
 
-    int arrayStart = json.indexOf('[', devicesStart);
-    if (arrayStart < 0) return 0;
-
-    int pos = arrayStart + 1;
-
-    while (deviceCount < maxDevices) {
-        // Find next device object
-        int objStart = json.indexOf('{', pos);
-        if (objStart < 0) break;
-
-        int objEnd = json.indexOf('}', objStart);
-        if (objEnd < 0) break;
-
-        String deviceObj = json.substring(objStart, objEnd + 1);
-
-        // Extract device fields
-        devices[deviceCount].id = parseJsonValue("id", deviceObj);
-        devices[deviceCount].name = parseJsonValue("name", deviceObj);
-        devices[deviceCount].type = parseJsonValue("type", deviceObj);
-
-        // Parse boolean fields
-        String isActiveStr = parseJsonValue("is_active", deviceObj);
-        devices[deviceCount].isActive = (isActiveStr == "true");
-
-        String isRestrictedStr = parseJsonValue("is_restricted", deviceObj);
-        devices[deviceCount].isRestricted = (isRestrictedStr == "true");
+        devices[deviceCount].id = device["id"].as<String>();
+        devices[deviceCount].name = device["name"].as<String>();
+        devices[deviceCount].type = device["type"].as<String>();
+        devices[deviceCount].isActive = device["is_active"].as<bool>();
+        devices[deviceCount].isRestricted = device["is_restricted"].as<bool>();
 
         if (!devices[deviceCount].id.isEmpty()) {
             deviceCount++;
         }
-
-        pos = objEnd + 1;
     }
 
     return deviceCount;
@@ -259,20 +275,22 @@ String SpotifyClient::getDevicesJson() {
 
     int count = getAvailableDevices(devices, MAX_DEVICES);
 
-    String json = "[";
-    for (int i = 0; i < count; i++) {
-        if (i > 0) json += ",";
-        json += "{";
-        json += "\"id\":\"" + devices[i].id + "\",";
-        json += "\"name\":\"" + devices[i].name + "\",";
-        json += "\"type\":\"" + devices[i].type + "\",";
-        json += "\"is_active\":" + String(devices[i].isActive ? "true" : "false") + ",";
-        json += "\"is_restricted\":" + String(devices[i].isRestricted ? "true" : "false");
-        json += "}";
-    }
-    json += "]";
+    // Build JSON response with ArduinoJson
+    JsonDocument doc;
+    JsonArray devicesArray = doc.to<JsonArray>();
 
-    return json;
+    for (int i = 0; i < count; i++) {
+        JsonObject device = devicesArray.add<JsonObject>();
+        device["id"] = devices[i].id;
+        device["name"] = devices[i].name;
+        device["type"] = devices[i].type;
+        device["is_active"] = devices[i].isActive;
+        device["is_restricted"] = devices[i].isRestricted;
+    }
+
+    String output;
+    serializeJson(doc, output);
+    return output;
 }
 
 bool SpotifyClient::setDeviceById(const String& deviceId) {
@@ -360,109 +378,90 @@ HttpResult SpotifyClient::callApi(HttpMethod method, const String& url, const St
     return result;
 }
 
-String SpotifyClient::parseJsonValue(const String& key, const String& json) {
-    String value;
+HttpResult SpotifyClient::callApiWithRetry(HttpMethod method, const String& url, const String& body) {
+    HttpResult result;
+    uint8_t retryCount = 0;
 
-    // Search for quoted key pattern: "key":
-    String searchPattern = "\"" + key + "\"";
-    int index = json.indexOf(searchPattern);
+    while (retryCount <= retryConfig_.maxRetries) {
+        result = callApi(method, url, body);
 
-    if (index < 0) {
-        return value;
-    }
-
-    // Find the colon after the key
-    int colonPos = json.indexOf(':', index);
-    if (colonPos < 0) return value;
-
-    // Skip whitespace after colon
-    int valueStart = colonPos + 1;
-    while (valueStart < (int)json.length() && (json.charAt(valueStart) == ' ' || json.charAt(valueStart) == '\t')) {
-        valueStart++;
-    }
-
-    if (valueStart >= (int)json.length()) return value;
-
-    // Check if value is quoted
-    if (json.charAt(valueStart) == '"') {
-        // String value - extract until closing quote
-        valueStart++; // Skip opening quote
-        for (int i = valueStart; i < (int)json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '"' && (i == valueStart || json.charAt(i-1) != '\\')) {
-                // Found closing quote (not escaped)
-                break;
-            }
-            value += c;
+        // Success or non-retryable error
+        if (result.isSuccess() || !result.shouldRetry()) {
+            currentRetryCount_ = 0;
+            return result;
         }
+
+        // Check if we should retry
+        if (retryCount < retryConfig_.maxRetries) {
+            uint32_t delayMs = calculateBackoffDelay(retryCount);
+
+            DEBUG_PRINT(F("Request failed, retrying in "));
+            DEBUG_PRINT(delayMs);
+            DEBUG_PRINTLN(F("ms..."));
+
+            // Non-blocking delay using yield()
+            unsigned long startTime = millis();
+            while (millis() - startTime < delayMs) {
+                yield(); // Allow ESP8266 to handle background tasks
+            }
+
+            retryCount++;
+            currentRetryCount_ = retryCount;
+        } else {
+            break;
+        }
+    }
+
+    DEBUG_PRINT(F("Request failed after "));
+    DEBUG_PRINT(retryConfig_.maxRetries);
+    DEBUG_PRINTLN(F(" retries"));
+
+    return result;
+}
+
+uint32_t SpotifyClient::calculateBackoffDelay(uint8_t retryCount) const {
+    // Exponential backoff with jitter
+    uint32_t delay = retryConfig_.initialDelayMs;
+
+    for (uint8_t i = 0; i < retryCount; i++) {
+        delay = static_cast<uint32_t>(delay * retryConfig_.backoffMultiplier);
+        if (delay > retryConfig_.maxDelayMs) {
+            delay = retryConfig_.maxDelayMs;
+            break;
+        }
+    }
+
+    // Add jitter (±25% randomization to prevent thundering herd)
+    uint32_t jitter = random(delay / 4);
+    if (random(2) == 0) {
+        delay += jitter;
     } else {
-        // Non-string value (number, boolean, null) - extract until comma or }
-        for (int i = valueStart; i < (int)json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\n' || c == '\r') {
-                break;
-            }
-            value += c;
-        }
+        delay -= jitter;
     }
 
-    return value;
+    return delay;
 }
 
 String SpotifyClient::extractDeviceId(const String& json) {
-    String id;
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, json);
 
-    // Find position of the device name
-    int nameIndex = json.indexOf(deviceName_);
-    if (nameIndex < 0) {
-        return id;
+    if (error) {
+        DEBUG_PRINT(F("JSON parse error: "));
+        DEBUG_PRINTLN(error.c_str());
+        return "";
     }
 
-    // Back up to find the start of this device object
-    int objectStart = nameIndex;
-    for (; objectStart > 0; objectStart--) {
-        if (json.charAt(objectStart) == '{') {
-            break;
+    JsonArray devices = doc["devices"].as<JsonArray>();
+
+    for (JsonObject device : devices) {
+        String name = device["name"].as<String>();
+        if (name == deviceName_) {
+            return device["id"].as<String>();
         }
     }
 
-    // Find "id" key within this object
-    int i = objectStart;
-    for (; i < static_cast<int>(json.length()); i++) {
-        // Stop if we hit the end of this object
-        if (json.charAt(i) == '}') {
-            break;
-        }
-
-        // Look for "id" pattern
-        if (i + 3 < static_cast<int>(json.length()) &&
-            json.charAt(i) == '"' &&
-            json.charAt(i + 1) == 'i' &&
-            json.charAt(i + 2) == 'd' &&
-            json.charAt(i + 3) == '"') {
-            i += 4;
-            break;
-        }
-    }
-
-    // Move to the value (skip : and opening ")
-    for (; i < static_cast<int>(json.length()); i++) {
-        if (json.charAt(i) == '"') {
-            i++;
-            break;
-        }
-    }
-
-    // Extract the ID value
-    for (; i < static_cast<int>(json.length()); i++) {
-        char c = json.charAt(i);
-        if (c == '"') {
-            break;
-        }
-        id += c;
-    }
-
-    return id;
+    return "";
 }
 
 String SpotifyClient::buildBasicAuthHeader() const {
