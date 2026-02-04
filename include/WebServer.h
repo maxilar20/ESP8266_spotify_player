@@ -71,6 +71,21 @@ private:
     void handleStatus();
 
     /**
+     * @brief Handle API request for WiFi info
+     */
+    void handleWifiInfo();
+
+    /**
+     * @brief Handle API request to reset WiFi settings
+     */
+    void handleWifiReset();
+
+    /**
+     * @brief Handle API request to restart device
+     */
+    void handleRestart();
+
+    /**
      * @brief Handle 404 not found
      */
     void handleNotFound();

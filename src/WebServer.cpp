@@ -28,6 +28,13 @@ h1{text-align:center;margin-bottom:10px;color:#1DB954;font-size:1.8em}
 .btn-primary:hover{background:#1ed760}
 .btn-primary:disabled{background:#555;cursor:not-allowed}
 .btn-secondary{background:transparent;border:2px solid #1DB954;color:#1DB954}
+.btn-danger{background:#f52;color:#fff}
+.btn-danger:hover{background:#e03e3e}
+.btn-small{padding:8px;font-size:14px;margin-top:8px}
+.info-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:.9em}
+.info-row:last-child{border-bottom:none}
+.info-label{color:#888}
+.info-value{color:#fff;font-weight:500}
 .status-bar{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;margin-bottom:10px;font-size:.9em}
 .status-bar.success{background:rgba(29,185,84,.2);border:1px solid #1DB954}
 .status-bar.error{background:rgba(255,82,82,.2);border:1px solid #f52}
@@ -73,6 +80,20 @@ h1{text-align:center;margin-bottom:10px;color:#1DB954;font-size:1.8em}
 </div>
 </div>
 <div class="card">
+<h2>WiFi Information</h2>
+<div id="wifiInfo">
+<div class="info-row"><span class="info-label">SSID:</span><span id="wifiSsid" class="info-value">Loading...</span></div>
+<div class="info-row"><span class="info-label">IP Address:</span><span id="wifiIp" class="info-value">Loading...</span></div>
+<div class="info-row"><span class="info-label">Signal:</span><span id="wifiRssi" class="info-value">Loading...</span></div>
+</div>
+<button class="btn btn-danger btn-small" onclick="resetWifi()">Reset WiFi Settings</button>
+</div>
+<div class="card">
+<h2>Device Management</h2>
+<p style="color:#aaa;font-size:.85em;margin-bottom:10px">Restart the device to apply changes or recover from errors</p>
+<button class="btn btn-danger btn-small" onclick="restartDevice()">Restart Device</button>
+</div>
+<div class="card">
 <h2>How to Use</h2>
 <p style="color:#aaa;line-height:1.6;font-size:.9em">
 1. Make sure Spotify is open on a device<br>
@@ -95,6 +116,7 @@ async function loadDevices(){
 const select=document.getElementById('deviceSelect');
 const loading=document.getElementById('loading');
 const deviceSection=document.getElementById('deviceSection');
+loadWifiInfo();
 loading.style.display='block';
 deviceSection.style.display='none';
 try{
@@ -176,6 +198,45 @@ showToast('Connection error','error');
 btn.disabled=false;
 btn.textContent='Set Device';
 }
+async function loadWifiInfo(){
+try{
+const response=await fetch('/api/wifi');
+const wifi=await response.json();
+document.getElementById('wifiSsid').textContent=wifi.ssid;
+document.getElementById('wifiIp').textContent=wifi.ip;
+document.getElementById('wifiRssi').textContent=wifi.rssi+' dBm';
+}catch(error){
+console.error('WiFi info error:',error);
+}
+}
+async function resetWifi(){
+if(!confirm('Reset WiFi settings? Device will restart and enter setup mode.'))return;
+try{
+const response=await fetch('/api/wifi/reset',{method:'POST'});
+if(response.ok){
+showToast('WiFi reset! Device restarting...','success');
+setTimeout(()=>{window.location.reload();},3000);
+}else{
+showToast('Failed to reset WiFi','error');
+}
+}catch(error){
+showToast('Connection error','error');
+}
+}
+async function restartDevice(){
+if(!confirm('Restart the device?'))return;
+try{
+const response=await fetch('/api/restart',{method:'POST'});
+if(response.ok){
+showToast('Device restarting...','success');
+setTimeout(()=>{window.location.reload();},5000);
+}else{
+showToast('Failed to restart','error');
+}
+}catch(error){
+showToast('Connection error','error');
+}
+}
 function showToast(message,type){
 const toast=document.getElementById('toast');
 toast.textContent=message;
@@ -201,6 +262,9 @@ void WebServerController::begin() {
     server_.on("/api/devices", HTTP_GET, [this]() { handleGetDevices(); });
     server_.on("/api/device", HTTP_POST, [this]() { handleSetDevice(); });
     server_.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
+    server_.on("/api/wifi", HTTP_GET, [this]() { handleWifiInfo(); });
+    server_.on("/api/wifi/reset", HTTP_POST, [this]() { handleWifiReset(); });
+    server_.on("/api/restart", HTTP_POST, [this]() { handleRestart(); });
     server_.onNotFound([this]() { handleNotFound(); });
 
     server_.begin();
@@ -295,4 +359,45 @@ void WebServerController::handleStatus() {
 
 void WebServerController::handleNotFound() {
     server_.send(404, "text/plain", "Not Found");
+}
+
+void WebServerController::handleWifiInfo() {
+    server_.sendHeader("Access-Control-Allow-Origin", "*");
+
+    String json = "{";
+    json += "\"ssid\":\"" + WiFi.SSID() + "\",";
+    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI());
+    json += "}";
+
+    server_.send(200, "application/json", json);
+}
+
+void WebServerController::handleWifiReset() {
+    server_.sendHeader("Access-Control-Allow-Origin", "*");
+
+    DEBUG_PRINTLN(F("WiFi reset requested via web interface"));
+
+    server_.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi settings will be reset\"}");
+
+    // Give time for response to be sent
+    delay(500);
+
+    // Clear WiFi credentials and restart
+    WiFi.disconnect(true);
+    delay(1000);
+    ESP.restart();
+}
+
+void WebServerController::handleRestart() {
+    server_.sendHeader("Access-Control-Allow-Origin", "*");
+
+    DEBUG_PRINTLN(F("Device restart requested via web interface"));
+
+    server_.send(200, "application/json", "{\"success\":true,\"message\":\"Device restarting\"}");
+
+    // Give time for response to be sent
+    delay(500);
+
+    ESP.restart();
 }
