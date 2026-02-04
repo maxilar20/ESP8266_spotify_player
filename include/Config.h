@@ -3,12 +3,19 @@
  * @brief Configuration settings for the ESP8266 Spotify Player
  *
  * This file contains all configurable parameters for the project.
- * Copy this file to Config_local.h and modify with your credentials.
+ * Copy Config_local.h.example to Config_local.h and modify with your credentials.
  * Config_local.h is gitignored to protect sensitive information.
  */
 
 #ifndef CONFIG_H
 #define CONFIG_H
+
+// Include local configuration overrides if they exist
+#ifdef __has_include
+  #if __has_include("Config_local.h")
+    #include "Config_local.h"
+  #endif
+#endif
 
 // =============================================================================
 // Hardware Configuration
