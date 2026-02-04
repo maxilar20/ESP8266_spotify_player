@@ -1,212 +1,178 @@
-# Spotify Setup Guide
+# Spotify API Setup Guide
 
-This guide walks you through setting up the ESP8266 Spotify Player with the web-based configuration system.
+This guide explains how to get your Spotify API credentials, including the refresh token.
 
-## Overview
-
-The device now supports **web-based configuration** - no need to hardcode any credentials! After connecting to WiFi, you can configure Spotify through a browser.
-
-## Quick Start
-
-### 1. Flash the Firmware
-
-```bash
-# Using PlatformIO
-pio run -t upload
-```
-
-### 2. Connect to WiFi
-
-1. On first boot, the device creates a WiFi access point named **"SpotifyPlayer-AP"**
-2. Connect to it with password: **"configme123"**
-3. A captive portal will open - select your home WiFi network
-4. Enter your WiFi password and save
-
-### 3. Find the Device IP
-
-After WiFi connects, the device IP address is printed to serial:
-```
-╔════════════════════════════════════════════════╗
-║         WEB CONFIGURATION AVAILABLE            ║
-╠════════════════════════════════════════════════╣
-║  Open in browser: http://192.168.1.xxx        ║
-╚════════════════════════════════════════════════╝
-```
-
-You can also check your router's DHCP client list.
-
-### 4. Create a Spotify App
+## Step 1: Create a Spotify App
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Log in with your Spotify account
 3. Click **"Create App"**
 4. Fill in:
-   - **App name**: Anything (e.g., "ESP8266 Player")
+   - **App name**: ESP8266 Player (or anything)
    - **App description**: Anything
-   - **Redirect URI**: `http://<YOUR_ESP_IP>/callback` (e.g., `http://192.168.1.100/callback`)
-5. Check the "I understand" checkbox
-6. Click **"Save"**
-7. Click **"Settings"** to find your **Client ID** and **Client Secret**
+   - **Redirect URI**: `http://localhost:8888/callback`
+5. Check "I understand" and click **Save**
+6. Click **Settings** to see your **Client ID** and **Client Secret**
 
-> ⚠️ **Important**: The Redirect URI must match your ESP8266's IP address exactly!
+## Step 2: Get Your Refresh Token
 
-### 5. Configure via Web Interface
+### Option A: Using the Online Tool (Easiest)
 
-1. Open `http://<YOUR_ESP_IP>` in a browser
-2. Enter your:
-   - **Client ID** (from Spotify Dashboard)
-   - **Client Secret** (from Spotify Dashboard)
-   - **Device Name** (exact name of your Spotify Connect speaker/device)
-3. Click **"Save & Authorize with Spotify"**
-4. Log in to Spotify when redirected
-5. Click **"Agree"** to authorize the app
+1. Go to: https://getyourspotifyrefreshtoken.com/
+2. Enter your Client ID and Client Secret
+3. Click "Get Refresh Token"
+4. Log in to Spotify and authorize
+5. Copy the refresh token
 
-### 6. Done!
+### Option B: Using a Python Script
 
-The device is now configured and will remember your settings even after power cycles.
+Create a file called `get_token.py`:
 
----
+```python
+import base64
+import requests
+from urllib.parse import urlencode
+import webbrowser
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-## Finding Your Spotify Device Name
+CLIENT_ID = "YOUR_CLIENT_ID"
+CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+REDIRECT_URI = "http://localhost:8888/callback"
+SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
 
-The device name must match **exactly** what Spotify shows. To find it:
+auth_code = None
 
-1. Open Spotify on your phone/computer
-2. Play something
-3. Tap the "Devices Available" icon (speaker icon)
-4. Note the exact name of the device you want to control
+class CallbackHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        global auth_code
+        if "code=" in self.path:
+            auth_code = self.path.split("code=")[1].split("&")[0]
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<h1>Success! You can close this window.</h1>")
+        else:
+            self.send_response(400)
+            self.end_headers()
 
-Common device names:
-- `Living Room Speaker`
-- `Kitchen Echo`
-- `SAMSUNG TV`
-- `Web Player (Chrome)`
+    def log_message(self, format, *args):
+        pass
 
----
+# Step 1: Open browser for authorization
+auth_url = "https://accounts.spotify.com/authorize?" + urlencode({
+    "client_id": CLIENT_ID,
+    "response_type": "code",
+    "redirect_uri": REDIRECT_URI,
+    "scope": SCOPES,
+})
 
-## Troubleshooting
+print("Opening browser for Spotify authorization...")
+webbrowser.open(auth_url)
 
-### WiFi Issues
+# Step 2: Wait for callback
+server = HTTPServer(("localhost", 8888), CallbackHandler)
+print("Waiting for authorization...")
+while auth_code is None:
+    server.handle_request()
 
-**Can't connect to saved WiFi network?**
+# Step 3: Exchange code for tokens
+print("Exchanging code for tokens...")
+credentials = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
+response = requests.post(
+    "https://accounts.spotify.com/api/token",
+    headers={"Authorization": f"Basic {credentials}"},
+    data={
+        "grant_type": "authorization_code",
+        "code": auth_code,
+        "redirect_uri": REDIRECT_URI,
+    },
+)
 
-The device will automatically:
-1. Try reconnecting 3 times over 60 seconds
-2. If still failing, automatically restart the WiFi setup portal
-3. Connect to "SpotifyPlayer-AP" to reconfigure
-
-**Manual WiFi Reset:**
-
-Option 1: Connect a button to the GPIO pin defined in Config.h (`WIFI_RESET_BUTTON_PIN`) and hold for 3 seconds
-
-Option 2: Send a serial command (if you have serial access):
+tokens = response.json()
+print("\n" + "=" * 50)
+print("YOUR REFRESH TOKEN:")
+print("=" * 50)
+print(tokens.get("refresh_token", "Error: " + str(tokens)))
+print("=" * 50)
 ```
-// This will be added in a future update
-```
 
-Option 3: Re-flash the firmware with the `--erase-flash` option:
+Run it:
 ```bash
-pio run -t erase
+pip install requests
+python get_token.py
+```
+
+### Option C: Using cURL (Manual)
+
+1. **Get authorization code** - Open this URL in browser (replace YOUR_CLIENT_ID):
+   ```
+   https://accounts.spotify.com/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=http://localhost:8888/callback&scope=user-read-playback-state%20user-modify-playback-state%20user-read-currently-playing
+   ```
+
+2. After authorizing, you'll be redirected to a URL like:
+   ```
+   http://localhost:8888/callback?code=AQBxxxxxxxx...
+   ```
+   Copy the `code` value.
+
+3. **Exchange code for refresh token**:
+   ```bash
+   # First, encode your credentials (client_id:client_secret) in base64
+   echo -n "YOUR_CLIENT_ID:YOUR_CLIENT_SECRET" | base64
+   
+   # Then make the request
+   curl -X POST "https://accounts.spotify.com/api/token" \
+     -H "Authorization: Basic YOUR_BASE64_CREDENTIALS" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=authorization_code&code=YOUR_AUTH_CODE&redirect_uri=http://localhost:8888/callback"
+   ```
+
+4. The response will contain your `refresh_token`.
+
+## Step 3: Find Your Device Name
+
+1. Open Spotify on your phone or computer
+2. Play any song
+3. Tap the "Devices Available" icon (speaker/device icon)
+4. Note the **exact name** of the device you want to control
+
+Examples:
+- `Living Room Speaker`
+- `Echo Dot`
+- `SAMSUNG TV`
+
+## Step 4: Configure Your ESP8266
+
+Edit `include/Config_local.h`:
+
+```cpp
+#define SPOTIFY_CLIENT_ID     "abc123..."
+#define SPOTIFY_CLIENT_SECRET "xyz789..."
+#define SPOTIFY_REFRESH_TOKEN "AQDxxxxxxxxxxxxxxx..."
+#define SPOTIFY_DEVICE_NAME   "Living Room Speaker"
+```
+
+Then build and upload:
+```bash
 pio run -t upload
 ```
 
-**WiFi keeps disconnecting:**
+## Troubleshooting
 
-- The device will auto-reconnect up to 3 times
-- After 60 seconds of failed reconnects, it restarts the WiFi portal
-- Make sure your WiFi signal is strong enough
-
-### Spotify Issues
-
-### "Device not found" error
-
-- Make sure the Spotify device is **powered on and connected**
+### "Device not found"
+- Make sure the Spotify device is powered on
 - Play something on it first to "wake it up"
-- Verify the device name matches exactly (case-sensitive!)
+- Check the device name matches exactly (case-sensitive)
 
-### "Token fetch failed" error
+### "Token fetch failed" / 401 error
+- Verify Client ID and Secret are correct
+- Make sure you copied the entire refresh token
+- Refresh tokens don't expire, but they can be invalidated if you regenerate them
 
-- Double-check your Client ID and Client Secret
-- Make sure the Redirect URI in Spotify Dashboard matches exactly
+### Scopes / Permissions
+The refresh token needs these scopes:
+- `user-read-playback-state` - Check what's playing
+- `user-modify-playback-state` - Control playback
+- `user-read-currently-playing` - Get current track info
 
-### Can't access web interface
-
-- Make sure you're on the same WiFi network as the ESP8266
-- Try accessing by IP address directly
-- Check serial output for the correct IP
-
-### Authorization fails / redirect error
-
-1. In Spotify Dashboard, go to your app's **Settings**
-2. Under **Redirect URIs**, add: `http://<YOUR_ESP_IP>/callback`
-3. Make sure there are no trailing slashes
-4. Save and try again
-
-### Need to reconfigure?
-
-- Visit `http://<ESP_IP>/` to change settings
-- Or POST to `http://<ESP_IP>/clear` to reset everything
-
----
-
-## How It Works
-
-### Authentication Flow
-
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Browser   │     │   ESP8266    │     │   Spotify   │
-└─────┬───────┘     └──────┬───────┘     └──────┬──────┘
-      │                    │                    │
-      │  1. Enter creds    │                    │
-      │───────────────────>│                    │
-      │                    │                    │
-      │  2. Redirect       │                    │
-      │<───────────────────│                    │
-      │                    │                    │
-      │  3. User login     │                    │
-      │────────────────────────────────────────>│
-      │                    │                    │
-      │  4. Auth code      │                    │
-      │<────────────────────────────────────────│
-      │                    │                    │
-      │  5. Callback       │                    │
-      │───────────────────>│                    │
-      │                    │                    │
-      │                    │  6. Exchange code  │
-      │                    │───────────────────>│
-      │                    │                    │
-      │                    │  7. Refresh token  │
-      │                    │<───────────────────│
-      │                    │                    │
-      │  8. Success        │                    │
-      │<───────────────────│                    │
-```
-
-### Token Refresh
-
-The **refresh token** is stored in flash memory (LittleFS) and used to automatically get new **access tokens** whenever they expire (every hour). You only need to authorize once!
-
----
-
-## Security Notes
-
-- Credentials are stored in plaintext on the ESP8266's flash
-- The web interface is accessible to anyone on your local network
-- Consider disabling the web server after configuration if security is a concern
-
-To disable the web server after setup, you could modify the code to only run it when a button is pressed or during a specific time after boot.
-
----
-
-## API Reference
-
-### Web Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Configuration page |
-| `/save` | POST | Save credentials and start OAuth |
-| `/callback` | GET | OAuth callback from Spotify |
-| `/status` | GET | JSON status of configuration |
-| `/clear` | POST | Clear all saved configuration |
+If your token was generated with different scopes, generate a new one.

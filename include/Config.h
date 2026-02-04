@@ -35,37 +35,29 @@
 // WiFi Manager Settings
 #define WIFI_AP_NAME "SpotifyPlayer-AP"
 #define WIFI_AP_PASSWORD "configme123"
-#define WIFI_RECONNECT_DELAY 10000 // Milliseconds between reconnection attempts (10s)
-#define WIFI_PORTAL_TIMEOUT 180 // Seconds before portal timeout
-#define WIFI_MAX_RECONNECT_ATTEMPTS 3 // Attempts before restarting portal
-#define WIFI_RESET_BUTTON_PIN -1 // GPIO pin for WiFi reset button (-1 to disable)
+#define WIFI_RECONNECT_DELAY 20000 // Milliseconds between reconnection attempts
 
 // =============================================================================
 // Spotify API Configuration
 // =============================================================================
 
-// NOTE: With the web-based configuration system, you DON'T need to hardcode
-// these anymore! Just flash the firmware and configure via the web interface.
-//
-// These defines are kept for backwards compatibility and testing only.
-// The ConfigManager stores all credentials in flash memory (LittleFS).
-//
-// To configure: Visit http://<ESP_IP>/ after WiFi connects
+// Get these from https://developer.spotify.com/dashboard
+// See docs/SPOTIFY_SETUP.md for how to get the refresh token
 
 #ifndef SPOTIFY_CLIENT_ID
-#define SPOTIFY_CLIENT_ID ""
+#define SPOTIFY_CLIENT_ID "your_client_id_here"
 #endif
 
 #ifndef SPOTIFY_CLIENT_SECRET
-#define SPOTIFY_CLIENT_SECRET ""
+#define SPOTIFY_CLIENT_SECRET "your_client_secret_here"
 #endif
 
 #ifndef SPOTIFY_REFRESH_TOKEN
-#define SPOTIFY_REFRESH_TOKEN ""
+#define SPOTIFY_REFRESH_TOKEN "your_refresh_token_here"
 #endif
 
 #ifndef SPOTIFY_DEVICE_NAME
-#define SPOTIFY_DEVICE_NAME ""
+#define SPOTIFY_DEVICE_NAME "Your Spotify Device Name"
 #endif
 
 // Spotify API Endpoints
