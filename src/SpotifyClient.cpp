@@ -7,6 +7,14 @@
 #include <ESP8266HTTPClient.h>
 #include <base64.h>
 
+SpotifyClient::SpotifyClient()
+    : clientId_()
+    , clientSecret_()
+    , refreshToken_()
+    , deviceName_()
+{
+}
+
 SpotifyClient::SpotifyClient(
     const String& clientId,
     const String& clientSecret,
@@ -18,6 +26,28 @@ SpotifyClient::SpotifyClient(
     , refreshToken_(refreshToken)
     , deviceName_(deviceName)
 {
+}
+
+void SpotifyClient::setCredentials(
+    const String& clientId,
+    const String& clientSecret,
+    const String& deviceName,
+    const String& refreshToken
+) {
+    clientId_ = clientId;
+    clientSecret_ = clientSecret;
+    deviceName_ = deviceName;
+    refreshToken_ = refreshToken;
+    // Clear existing tokens when credentials change
+    accessToken_ = "";
+    deviceId_ = "";
+}
+
+bool SpotifyClient::hasCredentials() const {
+    return !clientId_.isEmpty() &&
+           !clientSecret_.isEmpty() &&
+           !refreshToken_.isEmpty() &&
+           !deviceName_.isEmpty();
 }
 
 bool SpotifyClient::begin() {

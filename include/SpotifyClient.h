@@ -54,7 +54,7 @@ class SpotifyClient
 {
 public:
     /**
-     * @brief Construct a new Spotify Client
+     * @brief Construct a new Spotify Client with credentials
      * @param clientId Spotify application client ID
      * @param clientSecret Spotify application client secret
      * @param deviceName Target Spotify Connect device name
@@ -65,6 +65,30 @@ public:
         const String &clientSecret,
         const String &deviceName,
         const String &refreshToken);
+
+    /**
+     * @brief Construct an empty Spotify Client (configure later)
+     */
+    SpotifyClient();
+
+    /**
+     * @brief Update credentials dynamically
+     * @param clientId Spotify application client ID
+     * @param clientSecret Spotify application client secret
+     * @param deviceName Target Spotify Connect device name
+     * @param refreshToken OAuth refresh token
+     */
+    void setCredentials(
+        const String &clientId,
+        const String &clientSecret,
+        const String &deviceName,
+        const String &refreshToken);
+
+    /**
+     * @brief Check if credentials are configured
+     * @return true if all credentials are set
+     */
+    bool hasCredentials() const;
 
     /**
      * @brief Initialize the client (must be called after WiFi is connected)
