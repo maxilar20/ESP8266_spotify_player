@@ -1,0 +1,48 @@
+/**
+ * @file Config_local.h.example
+ * @brief Example local configuration file
+ *
+ * Copy this file to Config_local.h and fill in your credentials.
+ * Config_local.h is gitignored and will not be committed.
+ */
+
+#ifndef CONFIG_LOCAL_H
+#define CONFIG_LOCAL_H
+
+// =============================================================================
+// Spotify API Credentials
+// Get these from https://developer.spotify.com/dashboard
+// =============================================================================
+
+// Your Spotify Application Client ID
+#define SPOTIFY_CLIENT_ID       "your_client_id_here"
+
+// Your Spotify Application Client Secret
+#define SPOTIFY_CLIENT_SECRET   "your_client_secret_here"
+
+// OAuth Refresh Token
+// Generate using: npx spotify-token-gen --client-id YOUR_ID --client-secret YOUR_SECRET
+#define SPOTIFY_REFRESH_TOKEN   "your_refresh_token_here"
+
+// Target Spotify Connect device name (exactly as shown in Spotify app)
+#define SPOTIFY_DEVICE_NAME     "Your Speaker Name"
+
+// =============================================================================
+// Optional: Override Hardware Configuration
+// =============================================================================
+
+// Uncomment and modify to override defaults from Config.h
+// #define LED_PIN             4
+// #define NUM_LEDS            8
+// #define LED_BRIGHTNESS      50
+// #define NFC_RST_PIN         0
+// #define NFC_SS_PIN          15
+
+// =============================================================================
+// Optional: Custom WiFi AP Settings
+// =============================================================================
+
+// #define WIFI_AP_NAME        "MySpotifyPlayer"
+// #define WIFI_AP_PASSWORD    "mysecretpass"
+
+#endif // CONFIG_LOCAL_H
