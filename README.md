@@ -1,62 +1,30 @@
 # ESP8266 Spotify Player
 
-[![PlatformIO CI](https://github.com/yourusername/ESP8266_spotify_player/actions/workflows/build.yml/badge.svg)](https://github.com/yourusername/ESP8266_spotify_player/actions/workflows/build.yml)
+Tap an NFC tag to play Spotify on any device. ESP8266 + MFRC522 + NeoPixel LEDs.
 
-An ESP8266-based NFC-controlled Spotify player. Tap an NFC tag to instantly play your favorite playlists, albums, or podcasts on any Spotify Connect device.
+## Hardware
 
-![Project Banner](docs/images/banner.png)
-
-## Features
-
-- 🎵 **NFC Tag Control** - Tap NFC tags to play Spotify content
-- 📶 **WiFi Manager** - Easy WiFi setup via captive portal
-- 💡 **LED Status Indicators** - Visual feedback with NeoPixel strip
-- 🎤 **Sound Reactive Mode** - LED visualization responding to audio
-- 🔄 **Auto-reconnect** - Resilient WiFi and Spotify connection handling
-
-## Hardware Requirements
-
-| Component | Description |
-|-----------|-------------|
-| ESP8266 | NodeMCU v2 or compatible board |
-| MFRC522 | NFC/RFID reader module |
-| WS2812B | NeoPixel LED strip (8 LEDs recommended) |
-| Microphone | Analog sound sensor module (optional) |
-
-### Pin Connections
-
-| Component | ESP8266 Pin |
-|-----------|-------------|
+| Component | Pin |
+|-----------|-----|
 | NeoPixel Data | GPIO4 (D2) |
 | MFRC522 SDA | GPIO15 (D8) |
 | MFRC522 RST | GPIO0 (D3) |
 | MFRC522 SCK | GPIO14 (D5) |
 | MFRC522 MOSI | GPIO13 (D7) |
 | MFRC522 MISO | GPIO12 (D6) |
-| Microphone | A0 |
+| Mic (optional) | A0 |
 
-## Software Requirements
+> ⚠️ MFRC522 runs on 3.3V only!
 
-- [PlatformIO](https://platformio.org/) (VS Code extension recommended)
-- [Spotify Developer Account](https://developer.spotify.com/)
+## Setup
 
-## Quick Start
+### 1. Spotify Credentials
 
-### 1. Clone the Repository
+1. Create app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Add redirect URI: `http://localhost:8888/callback`
+3. Get refresh token: `npx spotify-token-gen --client-id YOUR_ID --client-secret YOUR_SECRET`
 
-```bash
-git clone https://github.com/yourusername/ESP8266_spotify_player.git
-cd ESP8266_spotify_player
-```
-
-### 2. Configure Spotify Credentials
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new application
-3. Add `http://localhost:8888/callback` as a redirect URI
-4. Copy the Client ID and Client Secret
-
-Create a `include/Config_local.h` file with your credentials:
+Create `include/Config_local.h`:
 
 ```cpp
 #ifndef CONFIG_LOCAL_H
@@ -70,170 +38,51 @@ Create a `include/Config_local.h` file with your credentials:
 #endif
 ```
 
-### 3. Get Refresh Token
-
-Use a tool like [spotify-token-gen](https://github.com/bkeepers/spotify-token-gen) to get your refresh token:
+### 2. Build & Upload
 
 ```bash
-npx spotify-token-gen --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
+pio run -t upload && pio device monitor
 ```
 
-### 4. Build and Upload
+### 3. WiFi Setup
 
-```bash
-# Build firmware
-pio run
-
-# Upload to ESP8266
-pio run -t upload
-
-# Monitor serial output
-pio device monitor
-```
-
-## Configuration
-
-All configuration options are in `include/Config.h`:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `LED_PIN` | 4 | GPIO pin for NeoPixel data |
-| `NUM_LEDS` | 8 | Number of LEDs in strip |
-| `LED_BRIGHTNESS` | 50 | Default brightness (0-255) |
-| `NFC_RST_PIN` | 0 | NFC reader reset pin |
-| `NFC_SS_PIN` | 15 | NFC reader SPI SS pin |
-| `WIFI_AP_NAME` | "SpotifyPlayer-AP" | Access point name for setup |
+On first boot, connect to `SpotifyPlayer-AP` (password: `configme123`) and configure WiFi.
 
 ## Writing NFC Tags
 
-NFC tags should contain a Spotify URI in NDEF format. The supported URI formats are:
-
-- `spotify:album:ALBUM_ID`
-- `spotify:playlist:PLAYLIST_ID`
-- `spotify:artist:ARTIST_ID`
-- `spotify:track:TRACK_ID`
-
-### Using NFC Tools App
-
-1. Open NFC Tools app on your phone
-2. Go to "Write" tab
-3. Add a record → URI
-4. Enter the Spotify URI (e.g., `spotify:playlist:37i9dQZF1DXcBWIGoYBM5M`)
-5. Write to tag
-
-### Finding Spotify URIs
-
-1. Open Spotify desktop app
-2. Right-click on any album/playlist/track
-3. Share → Copy Spotify URI
-
-## Project Structure
+Use the NFC Tools app to write Spotify URIs:
 
 ```
-ESP8266_spotify_player/
-├── .github/
-│   └── workflows/
-│       └── build.yml          # CI/CD pipeline
-├── docs/
-│   ├── images/               # Documentation images
-│   ├── API.md               # Code documentation
-│   ├── HARDWARE.md          # Hardware assembly guide
-│   ├── SPOTIFY_SETUP.md     # Spotify configuration guide
-│   └── USER_GUIDE.md        # Complete user guide with LED status
-├── include/
-│   ├── Config.h             # Configuration settings
-│   ├── Config_local.h       # Your local credentials (gitignored)
-│   ├── LedController.h      # LED controller interface
-│   ├── NfcReader.h          # NFC reader interface
-│   ├── SpotifyClient.h      # Spotify API client interface
-│   └── WebServer.h          # Web server interface
-├── src/
-│   ├── main.cpp             # Main application
-│   ├── LedController.cpp    # LED controller implementation
-│   ├── NfcReader.cpp        # NFC reader implementation
-│   ├── SpotifyClient.cpp    # Spotify API client implementation
-│   └── WebServer.cpp        # Web server implementation
-├── platformio.ini           # PlatformIO configuration
-└── README.md               # This file
+spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+spotify:album:ALBUM_ID
+spotify:track:TRACK_ID
 ```
 
-## LED Status Indicators
+Find URIs: Right-click in Spotify → Share → Copy Spotify URI
 
-The LED ring provides rich visual feedback for all device states:
+## LED Status
 
-### Connection States
-| Animation       | Color      | Meaning               |
-| --------------- | ---------- | --------------------- |
-| 🌈 Rainbow Sweep | Multicolor | Device starting up    |
-| 🟡 Pulsing       | Yellow     | Connecting to WiFi    |
-| 🔴 Fast Blink    | Red        | WiFi connection error |
-| 🔵 Pulsing       | Blue       | Connecting to Spotify |
-| 🟠 Slow Blink    | Orange     | Spotify error         |
-| 🟣 Pulsing       | Purple     | Refreshing token      |
+| Color           | Meaning               |
+| --------------- | --------------------- |
+| 🌈 Rainbow sweep | Starting up           |
+| 🟡 Yellow pulse  | Connecting to WiFi    |
+| 🔴 Red blink     | WiFi error            |
+| 🔵 Blue pulse    | Connecting to Spotify |
+| 🟢 Green solid   | Ready                 |
+| 🔵 Blue spin     | Reading tag           |
+| 🟢 Green flash   | Success               |
+| 🔴 Red flash     | Failed                |
 
-### Operation States
-| Animation        | Color       | Meaning                 |
-| ---------------- | ----------- | ----------------------- |
-| 🟢 Solid/Reactive | Dim Green   | Ready - waiting for NFC |
-| 🔵 Spinning       | Blue        | Reading NFC tag         |
-| � Dual Spin      | Blue-Purple | Processing tag          |
-| �🟢 Flash (×3)    | Green       | Tag success - playing!  |
-| 🔴 Flash (×5)     | Red         | Tag read failed         |
-| 🩵 Flash (×2)     | Cyan        | Device selected         |
-| ⚪ Sparkle        | White       | Searching for devices   |
+## Web Interface
 
-### Playback States
-| Animation   | Color    | Meaning            |
-| ----------- | -------- | ------------------ |
-| 🌈 Wave      | Rainbow  | Music playing      |
-| 🔵 Breathing | Dim Blue | Music paused       |
-| 🩵 Chase →   | Cyan     | Skip to next track |
-| 🩵 Chase ←   | Cyan     | Previous track     |
-| 🟢 Expand    | Teal     | Volume up          |
-| 🟢 Contract  | Teal     | Volume down        |
-
-📖 **See [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for detailed LED animations and complete usage instructions.**
+Access `http://<device-ip>` to select playback devices and manage settings.
 
 ## Troubleshooting
 
-### WiFi Connection Issues
-
-1. Press reset button to restart
-2. If captive portal doesn't appear, the device might already be configured
-3. To reset WiFi settings, uncomment and call `wifiManager.resetSettings()` in setup
-
-### NFC Reader Not Detected
-
-1. Check SPI wiring connections
-2. Ensure proper power supply (3.3V)
-3. Verify the MFRC522 is genuine (some clones have issues)
-
-### Spotify Playback Issues
-
-1. Verify credentials in `Config_local.h`
-2. Ensure the target device is active on Spotify
-3. Check serial monitor for API error messages
-4. Refresh token may expire - regenerate if needed
-
-## API Reference
-
-See [docs/API.md](docs/API.md) for detailed code documentation.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- **No WiFi portal**: Device may already be configured. Reset via web interface.
+- **NFC not working**: Check wiring and 3.3V power.
+- **Playback fails**: Ensure Spotify is open on target device, check serial logs.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [Spotify Web API](https://developer.spotify.com/documentation/web-api/)
-- [MFRC522 Arduino Library](https://github.com/miguelbalboa/rfid)
-- [Adafruit NeoPixel Library](https://github.com/adafruit/Adafruit_NeoPixel)
-- [WiFiManager](https://github.com/tzapu/WiFiManager)
+MIT
