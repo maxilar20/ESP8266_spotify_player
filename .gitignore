@@ -1,1 +1,56 @@
-.vscode/*
+# PlatformIO build directory
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# VS Code settings
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+
+# Local configuration with secrets
+include/Config_local.h
+
+# Compiled files
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+
+# IDE files
+*.swp
+*.swo
+*~
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Backup files
+*.orig
+
+# Documentation build
+docs/_build/
